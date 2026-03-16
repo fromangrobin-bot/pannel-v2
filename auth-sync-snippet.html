@@ -1,0 +1,126 @@
+<!-- ============================================================
+  INSTRUCTIONS : Colle ce bloc JUSTE AVANT </body> dans index.html
+  Il doit être placé APRÈS ton bloc <script> existant
+  ============================================================ -->
+<script>
+// ══════════════════════════════════════════════════
+// AUTHENTIFICATION & SYNC NEON
+// ══════════════════════════════════════════════════
+
+const API = ''; // Laisse vide sur Netlify (même domaine)
+
+// ── 1. Vérifier que l'utilisateur est connecté ──
+const AUTH_TOKEN = localStorage.getItem('auth_token');
+const AUTH_USER  = JSON.parse(localStorage.getItem('auth_user') || 'null');
+
+if (!AUTH_TOKEN) {
+  // Pas de token → page de login
+  window.location.href = '/login.html';
+}
+
+// ── 2. Afficher le nom de l'utilisateur dans la sidebar ──
+if (AUTH_USER) {
+  const nameEl = document.querySelector('.av-info p');
+  const emailEl = document.querySelector('.av-info span');
+  if (nameEl)  nameEl.textContent  = AUTH_USER.name  || 'Mon Profil';
+  if (emailEl) emailEl.textContent = AUTH_USER.email || '';
+}
+
+// ── 3. Ajouter un bouton Déconnexion dans la sidebar ──
+const sbFoot = document.querySelector('.sb-foot');
+if (sbFoot) {
+  const logoutBtn = document.createElement('button');
+  logoutBtn.className = 'nav-btn';
+  logoutBtn.style.cssText = 'margin-top:8px;color:#c0392b;';
+  logoutBtn.innerHTML = '<span class="ic">↩</span> Déconnexion';
+  logoutBtn.onclick = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    window.location.href = '/login.html';
+  };
+  sbFoot.appendChild(logoutBtn);
+}
+
+// ── 4. Charger les données depuis Neon au démarrage ──
+async function loadFromDB() {
+  try {
+    const res = await fetch(API + '/api/data-sync', {
+      headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN }
+    });
+
+    if (res.status === 401) {
+      // Token expiré
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login.html';
+      return;
+    }
+
+    if (!res.ok) return;
+
+    const { data } = await res.json();
+    if (!data) return;
+
+    // Écraser le localStorage avec les données de la DB
+    // (priorité à la DB pour sync multi-appareils)
+    if (data.todos        && Object.keys(data.todos).length)  { S.s('td',  data.todos);        TD   = data.todos; }
+    if (data.notes        && data.notes.length)                { S.s('nt',  data.notes);        notes= data.notes; }
+    if (data.objectives   && data.objectives.length)           { S.s('objectives', data.objectives); OBJ = data.objectives; }
+    if (data.transactions && data.transactions.length)         { S.s('txs', data.transactions); txs  = data.transactions; }
+    if (data.recurrents   && data.recurrents.length)           { S.s('rcs', data.recurrents);   recs = data.recurrents; }
+    if (data.favoris      && data.favoris.length)              { S.s('fv',  data.favoris);      favs = data.favoris; }
+    if (data.quick_todos  && data.quick_todos.length)          { S.s('qT',  data.quick_todos);  QT   = data.quick_todos; }
+
+    // Re-render tout avec les données fraîches
+    renderLS(); renderFTL(); renderQT();
+    renderOBJ(); renderNotes(); renderBud();
+    renderFavs(); renderDObj(); renderDBud(); updStats();
+
+    console.log('✅ Données chargées depuis Neon');
+  } catch (err) {
+    console.warn('⚠️ Impossible de charger depuis la DB, utilisation du cache local', err);
+  }
+}
+
+// ── 5. Sauvegarder vers Neon ──
+let syncTimeout = null;
+
+async function saveToDB() {
+  if (!AUTH_TOKEN) return;
+  try {
+    await fetch(API + '/api/data-sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + AUTH_TOKEN,
+      },
+      body: JSON.stringify({
+        todos:        TD,
+        notes:        notes,
+        objectives:   OBJ,
+        transactions: txs,
+        recurrents:   recs,
+        favoris:      favs,
+        quick_todos:  QT,
+      }),
+    });
+    console.log('💾 Sauvegardé dans Neon');
+  } catch (err) {
+    console.warn('⚠️ Sauvegarde DB échouée (données gardées en local)', err);
+  }
+}
+
+// Sauvegarde avec debounce (attend 2s après le dernier changement)
+// Remplace S.s() pour déclencher aussi une sauvegarde DB
+const _origSave = S.s.bind(S);
+S.s = function(key, val) {
+  _origSave(key, val); // sauvegarder en local d'abord (instantané)
+  clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(saveToDB, 2000); // puis en DB 2s après
+};
+
+// ── 6. Sauvegarde auto toutes les 60 secondes en secours ──
+setInterval(saveToDB, 60000);
+
+// ── 7. Charger les données au démarrage ──
+loadFromDB();
+</script>
