@@ -992,13 +992,13 @@ if (sbFoot) {
 // ── 4. Charger les données depuis Neon au démarrage ──
 async function loadFromDB() {
   try {
-    const res = await fetch(API + '/api/data-sync', {
+    const res = await fetch('/api/data-sync', {
       headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN }
     });
 
     if (res.status === 401) {
-      // Token expiré
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_user');
       window.location.href = '/login.html';
       return;
     }
@@ -1008,15 +1008,33 @@ async function loadFromDB() {
     const { data } = await res.json();
     if (!data) return;
 
-    // Écraser le localStorage avec les données de la DB
-    // (priorité à la DB pour sync multi-appareils)
-    if (data.todos        && Object.keys(data.todos).length)  { S.s('td',  data.todos);        TD   = data.todos; }
-    if (data.notes        && data.notes.length)                { S.s('nt',  data.notes);        notes= data.notes; }
-    if (data.objectives   && data.objectives.length)           { S.s('objectives', data.objectives); OBJ = data.objectives; }
-    if (data.transactions && data.transactions.length)         { S.s('txs', data.transactions); txs  = data.transactions; }
-    if (data.recurrents   && data.recurrents.length)           { S.s('rcs', data.recurrents);   recs = data.recurrents; }
-    if (data.favoris      && data.favoris.length)              { S.s('fv',  data.favoris);      favs = data.favoris; }
-    if (data.quick_todos  && data.quick_todos.length)          { S.s('qT',  data.quick_todos);  QT   = data.quick_todos; }
+    // Mettre à jour les variables avec les données de la DB
+    if (data.todos && Object.keys(data.todos).length) {
+      TD = data.todos;
+      S.s('todoData', TD);
+    }
+    if (data.notes && data.notes.length) {
+      notes = data.notes;
+      S.s('notes', notes);
+    }
+    if (data.objectives && data.objectives.length) {
+      OBJ = data.objectives;
+      // Patch _id manquants
+      OBJ.forEach((o,i)=>{ if(!o._id) o._id = Date.now()+i; });
+      S.s('objectives', OBJ);
+    }
+    if (data.transactions && data.transactions.length) {
+      TXS = data.transactions;
+      S.s('transactions', TXS);
+    }
+    if (data.favoris && data.favoris.length) {
+      FAVS = data.favoris;
+      S.s('favoris', FAVS);
+    }
+    if (data.quick_todos && data.quick_todos.length) {
+      QT = data.quick_todos;
+      S.s('quickTodos', QT);
+    }
 
     // Re-render tout avec les données fraîches
     renderLS(); renderFTL(); renderQT();
@@ -1025,7 +1043,7 @@ async function loadFromDB() {
 
     console.log('✅ Données chargées depuis Neon');
   } catch (err) {
-    console.warn('⚠️ Impossible de charger depuis la DB, utilisation du cache local', err);
+    console.warn('⚠️ Chargement DB échoué, cache local utilisé', err);
   }
 }
 
@@ -1035,20 +1053,20 @@ let syncTimeout = null;
 async function saveToDB() {
   if (!AUTH_TOKEN) return;
   try {
-    await fetch(API + '/api/data-sync', {
+    await fetch('/api/data-sync', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + AUTH_TOKEN,
       },
       body: JSON.stringify({
-        todos:        TD,
-        notes:        notes,
-        objectives:   OBJ,
-        transactions: txs,
-        recurrents:   recs,
-        favoris:      favs,
-        quick_todos:  QT,
+        todos:        TD    || {},
+        notes:        notes || [],
+        objectives:   OBJ   || [],
+        transactions: TXS   || [],
+        recurrents:   [],
+        favoris:      FAVS  || [],
+        quick_todos:  QT    || [],
       }),
     });
     console.log('💾 Sauvegardé dans Neon');
