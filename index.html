@@ -245,6 +245,7 @@ select.fi{cursor:pointer}
 .fdl{position:absolute;top:4px;right:6px;background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:12px;opacity:0;transition:opacity .15s;padding:1px 3px;border-radius:4px}
 .fc:hover .fdl{opacity:1}
 .fdl:hover{background:#fce4e4;color:#c0392b}
+@media(hover:none){.fdl{opacity:1;background:rgba(252,228,228,.7);color:#c0392b}}
 .fst{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:9px}
 
 /* EMPTY */
@@ -313,8 +314,11 @@ select.fi{cursor:pointer}
   <div class="sb-foot">
     <div class="av-row">
       <div class="av-img">M</div>
-      <div class="av-info"><p>Mon Profil</p><span>localStorage actif</span></div>
+      <div class="av-info"><p id="av-name">Mon Profil</p><span id="av-email">localStorage actif</span></div>
     </div>
+    <button class="nav-btn" id="logout-btn" onclick="doLogout()" style="margin-top:8px;color:#c0392b;width:100%">
+      <span class="ic">↩</span> Déconnexion
+    </button>
   </div>
 </aside>
 
@@ -402,7 +406,15 @@ select.fi{cursor:pointer}
     <div class="fr"><input class="fi" id="oem" placeholder="🎯" style="width:62px;flex:none;text-align:center"><input class="fi" id="otl_" placeholder="Titre"></div>
     <div class="fr"><input class="fi" id="ods" placeholder="Description (optionnel)"></div>
     <div class="fr"><select class="fi" id="ocat"><option value="perso">🏠 Personnel</option><option value="pro">💼 Pro</option><option value="sante">💚 Santé</option></select><input type="date" class="fi" id="odt"></div>
-    <div style="display:flex;gap:7px"><button class="btn bp" onclick="addObj()">Créer</button><button class="btn bs" onclick="TF('aof')">Annuler</button></div>
+    <div style="margin-bottom:9px">
+      <div style="font-size:11px;color:var(--text-muted);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Sous-objectifs (optionnel)</div>
+      <div id="steps-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:7px"></div>
+      <div style="display:flex;gap:6px">
+        <input class="fi" id="step-inp" placeholder="Ex: Faire les maquettes…" onkeydown="if(event.key==='Enter'){event.preventDefault();addStepToForm()}" style="flex:1">
+        <button class="btn bs" type="button" onclick="addStepToForm()" style="flex:none;padding:8px 12px">+ Ajouter</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:7px"><button class="btn bp" onclick="addObj()">Créer</button><button class="btn bs" onclick="TF('aof');clearObjForm()">Annuler</button></div>
   </div>
 </div>
 
@@ -714,10 +726,58 @@ function tStep(id,si){
   S.s('objectives',OBJ);renderOBJ();renderDObj();
 }
 function FO(cat,btn){OF=cat;document.querySelectorAll('#page-objectives .tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');renderOBJ()}
+// Étapes temporaires pendant la création
+let _formSteps = [];
+
+function addStepToForm() {
+  const inp = document.getElementById('step-inp');
+  const val = inp.value.trim();
+  if (!val) return;
+  _formSteps.push({ text: val, done: false });
+  inp.value = '';
+  renderFormSteps();
+}
+
+function removeFormStep(i) {
+  _formSteps.splice(i, 1);
+  renderFormSteps();
+}
+
+function renderFormSteps() {
+  const el = document.getElementById('steps-list');
+  if (!_formSteps.length) { el.innerHTML = ''; return; }
+  el.innerHTML = _formSteps.map((s, i) => `
+    <div style="display:flex;align-items:center;gap:7px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);font-size:12.5px">
+      <span style="color:var(--text-muted)">☐</span>
+      <span style="flex:1">${s.text}</span>
+      <button onclick="removeFormStep(${i})" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:13px;padding:0 3px" type="button">×</button>
+    </div>`).join('');
+}
+
+function clearObjForm() {
+  _formSteps = [];
+  renderFormSteps();
+  document.getElementById('step-inp').value = '';
+}
+
 function addObj(){
-  const title=document.getElementById('otl_').value.trim();if(!title)return;
-  OBJ.push({_id: Date.now(), emoji:document.getElementById('oem').value||'🎯',title,desc:document.getElementById('ods').value.trim(),cat:document.getElementById('ocat').value,date:document.getElementById('odt').value,progress:0,steps:[]});
-  S.s('objectives',OBJ);document.getElementById('oem').value='';document.getElementById('otl_').value='';document.getElementById('ods').value='';
+  const title=document.getElementById('otl_').value.trim();
+  if(!title)return;
+  OBJ.push({
+    _id: Date.now(),
+    emoji: document.getElementById('oem').value||'🎯',
+    title,
+    desc: document.getElementById('ods').value.trim(),
+    cat: document.getElementById('ocat').value,
+    date: document.getElementById('odt').value,
+    progress: 0,
+    steps: [..._formSteps]
+  });
+  S.s('objectives',OBJ);
+  document.getElementById('oem').value='';
+  document.getElementById('otl_').value='';
+  document.getElementById('ods').value='';
+  clearObjForm();
   TF('aof');renderOBJ();renderDObj();
 }
 function dObj(id){
@@ -962,31 +1022,22 @@ const AUTH_TOKEN = localStorage.getItem('auth_token');
 const AUTH_USER  = JSON.parse(localStorage.getItem('auth_user') || 'null');
 
 if (!AUTH_TOKEN) {
-  // Pas de token → page de login
   window.location.href = '/login.html';
 }
 
 // ── 2. Afficher le nom de l'utilisateur dans la sidebar ──
 if (AUTH_USER) {
-  const nameEl = document.querySelector('.av-info p');
-  const emailEl = document.querySelector('.av-info span');
+  const nameEl  = document.getElementById('av-name');
+  const emailEl = document.getElementById('av-email');
   if (nameEl)  nameEl.textContent  = AUTH_USER.name  || 'Mon Profil';
   if (emailEl) emailEl.textContent = AUTH_USER.email || '';
 }
 
-// ── 3. Ajouter un bouton Déconnexion dans la sidebar ──
-const sbFoot = document.querySelector('.sb-foot');
-if (sbFoot) {
-  const logoutBtn = document.createElement('button');
-  logoutBtn.className = 'nav-btn';
-  logoutBtn.style.cssText = 'margin-top:8px;color:#c0392b;';
-  logoutBtn.innerHTML = '<span class="ic">↩</span> Déconnexion';
-  logoutBtn.onclick = () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
-    window.location.href = '/login.html';
-  };
-  sbFoot.appendChild(logoutBtn);
+// ── 3. Déconnexion ──
+function doLogout() {
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('auth_user');
+  window.location.href = '/login.html';
 }
 
 // ── 4. Charger les données depuis Neon au démarrage ──
